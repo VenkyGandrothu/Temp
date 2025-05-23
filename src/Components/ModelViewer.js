@@ -1,99 +1,111 @@
+/* src/Components/ModelViewer.js */
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import '../Styles/ModelViewer.css';
 
 export default function ModelViewer({ url }) {
   const containerRef = useRef();
-  // refs to hold values across renders
   const canvasRef = useRef();
   const animationIdRef = useRef();
 
   useEffect(() => {
     const container = containerRef.current;
+    if (!container) return;
 
-    // 1) Scene, Camera, Renderer
+    // Scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xeeeeee);
 
+    // Camera
     const camera = new THREE.PerspectiveCamera(
       60,
       container.clientWidth / container.clientHeight,
       0.1,
       1000
     );
-    camera.position.set(0, 2, 5);
 
+    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
-    // store the canvas so we can remove it later
     canvasRef.current = renderer.domElement;
 
-    // 2) Lights
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-    hemiLight.position.set(0, 20, 0);
-    scene.add(hemiLight);
+    // Lights
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    hemi.position.set(0, 20, 0);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(3, 10, 10);
+    scene.add(dir);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(3, 10, 10);
-    scene.add(dirLight);
-
-    // 3) Controls
+    // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1, 0);
-    controls.update();
+    controls.enableRotate = true;
+    controls.enableZoom = true;
+    controls.enablePan = true;
 
-    // 4) Load GLTF
+    // Load GLTF
     const loader = new GLTFLoader();
-    let model;
     loader.load(
       url,
       gltf => {
-        model = gltf.scene;
+        const model = gltf.scene;
         scene.add(model);
+
+        // Compute bounding box and sphere
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+
+        // Recentering model: center on origin and sit on ground
+        model.position.sub(center);
+        model.position.y += size.y / 2;
+
+        // Position camera so model fits in view
+        const radius = sphere.radius;
+        const camDist = radius * 2;
+        camera.position.set(0, radius, camDist);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        console.log(`Model size: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
       },
-      xhr => {
-        console.log(`Loading: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`);
-      },
-      error => console.error('Error loading model:', error)
+      xhr => console.log(`Loading: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`),
+      err => console.error('Error loading model:', err)
     );
 
-    // 5) Render loop
-    const clock = new THREE.Clock();
+    // Render loop
     const animate = () => {
-      // schedule next frame and remember its ID
       animationIdRef.current = requestAnimationFrame(animate);
-
-      if (model) {
-        model.rotation.y += 0.01 * clock.getDelta();
-      }
-
       controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
-    // 6) Cleanup on unmount
+    // Resize handler
+    const onResize = () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+    window.addEventListener('resize', onResize);
+
+    // Cleanup
     return () => {
-      // cancel the scheduled frame
-      if (animationIdRef.current) {
-        cancelAnimationFrame(animationIdRef.current);
-      }
+      if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
+      window.removeEventListener('resize', onResize);
       controls.dispose();
       renderer.dispose();
-      // only remove the canvas if the container still exists
-      if (container && canvasRef.current) {
-        container.removeChild(canvasRef.current);
-      }
+      if (container && canvasRef.current) container.removeChild(canvasRef.current);
       scene.clear();
     };
   }, [url]);
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100vh', overflow: 'hidden' }}
-    />
-  );
+  return <div ref={containerRef} className="model-viewer-container" />;
 }

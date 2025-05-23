@@ -1,0 +1,23 @@
+/* src/styles/ModelViewer.css */
+
+.model-viewer-container {
+  width: 100%;
+  /* subtract the header height (60px) from total viewport */
+  height: calc(100vh - 60px);
+  max-width: 1920px;
+  margin: 0 auto;
+  overflow: hidden;
+  touch-action: none;
+}
+
+@media (max-width: 1024px) {
+  .model-viewer-container {
+    /* subtract header on tablet, and reduce total */
+    height: calc(90vh - 60px);
+  }
+}
+@media (max-width: 768px) {
+  .model-viewer-container {
+    height: calc(85vh - 60px);
+  }
+}
